@@ -6,6 +6,9 @@ import RootCausePanel from "./components/RootCausePanel";
 import RecoveryChart from "./components/RecoveryChart";
 import DecisionFeed from "./components/DecisionFeed";
 import EscalationQueue from "./components/EscalationQueue";
+import LiveInjectionPanel from "./components/LiveInjectionPanel";
+
+const INJECT_STAGES = ["Injecting anomaly…", "Detecting…", "Isolating root cause…"];
 
 function StepButton({ label, onClick, loading, loadingLabel, done, disabled }) {
   return (
@@ -33,6 +36,11 @@ export default function App() {
   const [baselineState, setBaselineState] = useState("idle");
   const [agentState, setAgentState] = useState("idle");
   const [error, setError] = useState(null);
+
+  const [injectState, setInjectState] = useState("idle");
+  const [injectStageIdx, setInjectStageIdx] = useState(0);
+  const [injectResult, setInjectResult] = useState(null);
+  const injectTimerRef = useRef(null);
 
   const [agentProgress, setAgentProgress] = useState({ done: 0, total: 0 });
   const agentProgressTimerRef = useRef(null);
@@ -123,6 +131,34 @@ export default function App() {
     }
   };
 
+  const runInject = async () => {
+    setError(null);
+    setInjectState("loading");
+    setInjectStageIdx(0);
+    // Stage the loading text forward every ~800ms while the request is in flight -
+    // purely cosmetic pacing of real progress, not an artificial delay: if the
+    // response comes back sooner the stages just stop wherever they got to, and if
+    // it takes longer the last stage stays shown until it resolves.
+    injectTimerRef.current = setInterval(() => {
+      setInjectStageIdx((i) => Math.min(i + 1, INJECT_STAGES.length - 1));
+    }, 800);
+    try {
+      const result = await api.triggerInjection();
+      await refreshReadData();
+      if (result.detected) setMethod(result.detected.payment_method);
+      setInjectResult(result);
+      setInjectState("done");
+      setDiagnoseState("done");
+      setBaselineState("idle");
+      setAgentState("idle");
+    } catch (e) {
+      setError(String(e.message || e));
+      setInjectState("idle");
+    } finally {
+      clearInterval(injectTimerRef.current);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-surface text-slate-100">
       <header className="border-b border-surface-border sticky top-0 bg-surface/95 backdrop-blur z-10">
@@ -142,6 +178,14 @@ export default function App() {
               done={agentState === "done"}
               disabled={diagnoseState === "idle" && !events.length}
             />
+            <span className="w-px h-5 bg-surface-border mx-1" />
+            <StepButton
+              label="⚡ Trigger live degradation"
+              onClick={runInject}
+              loading={injectState === "loading"}
+              loadingLabel={INJECT_STAGES[injectStageIdx]}
+              done={false}
+            />
           </div>
         </div>
       </header>
@@ -155,6 +199,12 @@ export default function App() {
       )}
 
       <main className="max-w-7xl mx-auto px-6 py-6 flex flex-col gap-6">
+        <LiveInjectionPanel
+          loading={injectState === "loading"}
+          stageLabel={INJECT_STAGES[injectStageIdx]}
+          result={injectResult}
+        />
+
         <MetricsCards metrics={metrics} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">

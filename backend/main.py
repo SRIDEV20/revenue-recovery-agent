@@ -5,6 +5,8 @@ Routes:
   GET  /api/health/timeseries          - payment health time series (optionally filtered)
   GET  /api/health/events              - detected degradation events + root cause statements
   POST /api/pipeline/diagnose          - (re)run Steps 1-6: detect + diagnose + link + persist
+  POST /api/pipeline/inject-and-detect - inject a fresh random degradation, then re-run
+                                          Steps 1-6 blind against it (live demo trigger)
   POST /api/pipeline/run/{policy}      - run Step 7-10 for 'agent' or 'baseline', persist results
   GET  /api/pipeline/progress          - poll progress of an in-flight agent batch run
   GET  /api/metrics                    - agent vs baseline metrics (overall + degradation-linked)
@@ -13,7 +15,7 @@ Routes:
   GET  /api/audit-log                  - queryable audit trail
   GET  /api/audit-log/export           - full audit trail as downloadable JSON
 
-Every mutating route (diagnose / run) is serialized through a
+Every mutating route (diagnose / inject-and-detect / run) is serialized through a
 single process-wide lock (_pipeline_lock) - they all read+write the same CSVs/DB, so
 two of them running concurrently (e.g. a double-click, or a stale browser tab retrying
 after a refresh) could interleave writes and corrupt state. A second request while one
@@ -38,6 +40,7 @@ import pipeline
 from diagnosis.affected_transactions import link_transactions_to_all_events
 from metrics.evaluate import compute_metrics
 from executor import audit_log as audit_log_module
+from monitoring.degradation_injector import inject_random_degradation
 
 app = FastAPI(title="Revenue Recovery Agent API", version="1.0.0")
 
@@ -217,6 +220,54 @@ def run_diagnosis(reset: bool = True):
             "events": diag["events"],
             "transactions_linked": int(diag["linked"].degradation_linked.sum()),
             "transactions_total": len(diag["linked"]),
+        }
+    finally:
+        _release_pipeline()
+
+
+def _match_injected_event(ground_truth: dict, events: list[dict]) -> Optional[dict]:
+    """Finds the event (if any) the detector independently flagged for the slice/window
+    we just injected - matched by slice + overlapping window, never by trusting the
+    injector's numbers directly. Returns None if the detector missed it."""
+    gt_start = datetime.fromisoformat(ground_truth["window_start"])
+    gt_end = datetime.fromisoformat(ground_truth["window_end"])
+    candidates = []
+    for e in events:
+        if e["payment_method"] != ground_truth["payment_method"] or e["bank_gateway"] != ground_truth["bank_gateway"]:
+            continue
+        e_start = datetime.fromisoformat(e["window_start"])
+        e_end = datetime.fromisoformat(e["window_end"])
+        if e_start < gt_end and e_end > gt_start:  # overlap
+            candidates.append(e)
+    if not candidates:
+        return None
+    candidates.sort(key=lambda e: abs((datetime.fromisoformat(e["window_start"]) - gt_start).total_seconds()))
+    return candidates[0]
+
+
+@app.post("/api/pipeline/inject-and-detect")
+def inject_and_detect():
+    """Injects a fresh, randomized degradation event (ground truth kept aside), then
+    re-runs the full detection + root-cause pipeline blind against the updated data -
+    same as a real anomaly appearing. Resets and re-persists the DB from the CSVs
+    (which now hold this new event plus every previously injected one, plus the
+    original seed anomaly) so '2. Run baseline' / '3. Run agent' pick everything up."""
+    _acquire_pipeline("inject-and-detect")
+    try:
+        ground_truth = inject_random_degradation()
+
+        _init_db(reset=True)
+        diag = pipeline.run_health_and_diagnosis()
+        _last_diagnosis["events"] = diag["events"]
+        _last_diagnosis["linked"] = diag["linked"]
+
+        detected_event = _match_injected_event(ground_truth, diag["events"])
+
+        return {
+            "detected": detected_event,
+            "detected_correctly": detected_event is not None,
+            "ground_truth": ground_truth,
+            "all_events": diag["events"],
         }
     finally:
         _release_pipeline()

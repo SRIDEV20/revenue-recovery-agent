@@ -20,6 +20,7 @@ export const api = {
   getHealthSlices: () => request("/health/slices"),
   getDegradationEvents: () => request("/health/events"),
   runDiagnosis: (reset = true) => request(`/pipeline/diagnose?reset=${reset}`, { method: "POST" }),
+  triggerInjection: () => request("/pipeline/inject-and-detect", { method: "POST" }),
   runPolicyBatch: (policy) => request(`/pipeline/run/${policy}`, { method: "POST" }),
   getPipelineProgress: () => request("/pipeline/progress"),
   getMetrics: () => request("/metrics"),
