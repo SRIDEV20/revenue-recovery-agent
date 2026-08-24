@@ -1,0 +1,19 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+backend/revenue_recovery.db
+backend/.env
+.env
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS / editor
+.DS_Store
+*.log
+
+# Claude Code local settings (machine-specific permissions)
+.claude/settings.local.json
