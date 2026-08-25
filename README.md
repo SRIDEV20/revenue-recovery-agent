@@ -1,5 +1,7 @@
 # Revenue Recovery Agent
 
+[![Tests](https://github.com/SRIDEV20/revenue-recovery-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/SRIDEV20/revenue-recovery-agent/actions/workflows/ci.yml)
+
 **An AI agent that doesn't just retry failed payments — it figures out *why* they're failing, system-wide, before deciding what to do about each one.**
 
 Built for the **Razorpay AI Buildathon 2026 — AI Revenue Recovery track**

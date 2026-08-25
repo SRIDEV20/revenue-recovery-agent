@@ -27,6 +27,7 @@ from diagnosis.root_cause import analyze
 from diagnosis.affected_transactions import link_transactions_to_all_events
 from agent.decision_engine import run_batch as run_agent_batch
 from agent.baseline_policy import run_batch_baseline
+from agent.decision_schema import validate_decision
 from executor.stopping_rules import check_and_enforce
 from executor.actions import execute_action, already_processed
 from executor import audit_log
@@ -152,6 +153,18 @@ def run_decision_batch(policy: str, events_with_context: list[dict], linked: pd.
                     "reason": f"decision.transaction_id={decision['transaction_id']!r} did not "
                               f"match any transaction in this batch - skipped, not executed.",
                 }, transaction_id=decision.get("transaction_id"), policy=policy, conn=conn)
+                continue
+
+            try:
+                validate_decision(decision)
+            except ValueError as e:
+                print(f"[pipeline] invalid decision schema for transaction_id="
+                      f"{decision['transaction_id']!r} (policy={policy}): {e} - skipping it, "
+                      f"batch continues.", file=sys.stderr)
+                audit_log.log_event("action", {
+                    "action_type": "skipped_invalid_decision_schema",
+                    "reason": str(e),
+                }, transaction_id=decision["transaction_id"], policy=policy, conn=conn)
                 continue
 
             if already_processed(conn, decision["transaction_id"], policy):
