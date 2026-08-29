@@ -23,7 +23,7 @@ Revenue gets lost twice: once to the outage itself, and again to a recovery stra
 
 This system is a pipeline, not a single model call:
 
-![Pipeline architecture diagram](docs/screenshots/Revenue-reovery-architecture.png)
+![Pipeline architecture diagram](docs/screenshots/Revenue-recovery-architecture.png)
 
 Full stage-by-stage detail: [`docs/architecture.md`](docs/architecture.md)
 
