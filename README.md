@@ -23,7 +23,7 @@ Revenue gets lost twice: once to the outage itself, and again to a recovery stra
 
 This system is a pipeline, not a single model call:
 
-![Pipeline architecture diagram](docs/architecture-diagram.svg)
+![Pipeline architecture diagram](docs/screenshots/Revenue-reovery-architecture.png)
 
 Full stage-by-stage detail: [`docs/architecture.md`](docs/architecture.md)
 
@@ -158,12 +158,6 @@ Numbers below are from the final verified run on the full dataset: 380 transacti
 | Degradation-linked transactions | 135 recovered of 172 | 51 recovered of 172 |
 
 The degradation-linked gap (80.81% vs. 29.65%) is the core proof point: the baseline keeps retrying blindly into each outage window and mostly fails; the agent detects the outage and waits it out or reroutes, recovering nearly 2.7x more of that same at-risk revenue. Cost-to-recover is higher for the agent because it spends on discounts and reroutes where the baseline spends nothing and simply gives up — but it converts that spend into far more of the outage-window revenue, a clear net win.
-
-![Agent decision feed — reasoning per transaction, including reroute-gateway decisions on degradation-linked transactions](docs/screenshots/decision-feed-agent.png)
-
-For contrast, the baseline's decision feed on the identical dataset — every decision is `retry_now`, with zero reroute or delay logic, regardless of gateway health:
-
-![Baseline decision feed — naive retry-immediately policy, no gateway-health awareness](docs/screenshots/decision-feed-baseline.png)
 
 ## Limitations & honest scope
 
