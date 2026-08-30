@@ -2,6 +2,8 @@
 
 [![Tests](https://github.com/SRIDEV20/revenue-recovery-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/SRIDEV20/revenue-recovery-agent/actions/workflows/ci.yml)
 
+🔗 **[Live demo](https://revenue-recovery-agent-opal.vercel.app)** · 📄 [API docs](https://revenue-recovery-agent-3rmi.onrender.com/docs)
+
 **An AI agent that doesn't just retry failed payments — it figures out *why* they're failing, system-wide, before deciding what to do about each one.**
 
 Built for the **Razorpay AI Buildathon 2026 — AI Revenue Recovery track**
@@ -121,7 +123,7 @@ python data/generate_transactions.py
 uvicorn main:app --reload --port 8000
 ```
 
-API docs: http://localhost:8000/docs
+API docs: [https://revenue-recovery-agent-3rmi.onrender.com/docs](https://revenue-recovery-agent-3rmi.onrender.com/docs)
 
 ### Frontend
 
@@ -131,7 +133,7 @@ npm install
 npm run dev
 ```
 
-Dashboard: http://localhost:5173
+Dashboard: [https://revenue-recovery-agent-opal.vercel.app](https://revenue-recovery-agent-opal.vercel.app)
 
 ### Using the dashboard
 
@@ -169,7 +171,7 @@ The degradation-linked gap (80.81% vs. 29.65%) is the core proof point: the base
 
 ## What's next
 
-- Deployment configs are in place (`backend/render.yaml`, `frontend/vercel.json`) for a live-hosted version.
+- Now live-deployed on Render (backend) + Vercel (frontend) — see `backend/render.yaml` and `frontend/vercel.json` for the configs, useful for anyone redeploying their own copy.
 - Real gateway/webhook integration to replace the synthetic transaction feed.
 - A/B testing the agent against baseline on a live traffic split rather than a static synthetic batch.
 
