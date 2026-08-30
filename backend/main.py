@@ -44,9 +44,19 @@ from monitoring.degradation_injector import inject_random_degradation
 
 app = FastAPI(title="Revenue Recovery Agent API", version="1.0.0")
 
+# Comma-separated list of allowed frontend origins, e.g.
+# "http://localhost:5173,https://my-app.vercel.app" - set via ALLOWED_ORIGINS
+# in the deployment environment. Never falls back to "*" so credentials'd
+# requests still work and only known frontends can call this API.
+_allowed_origins = [
+    origin.strip()
+    for origin in os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -136,9 +146,18 @@ def _load_diagnosis_from_db() -> Optional[dict]:
 
 @app.on_event("startup")
 def _ensure_db():
+    # Render's free-tier filesystem is ephemeral - the SQLite file is wiped on every
+    # redeploy and on any restart after the instance spins down from inactivity. So a
+    # missing DB file here isn't just a first-run thing, it's the normal case in
+    # production. Re-seed it from the committed CSVs immediately so the dashboard
+    # never comes up empty - the user shouldn't have to click "1. Diagnose" by hand
+    # just to recover from a routine restart. See docs/DEPLOYMENT.md.
     db_path = os.path.join(os.path.dirname(__file__), "revenue_recovery.db")
     if not os.path.exists(db_path):
         _init_db(reset=True)
+        diag = pipeline.run_health_and_diagnosis()
+        _last_diagnosis["events"] = diag["events"]
+        _last_diagnosis["linked"] = diag["linked"]
 
 
 @app.get("/api/health")
