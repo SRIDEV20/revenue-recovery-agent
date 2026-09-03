@@ -1,4 +1,25 @@
+import { useState } from "react";
 import { SEVERITY_COLOR } from "../palette";
+
+const VISIBLE_COUNT = 2;
+
+function ChevronIcon({ up }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`transition-transform ${up ? "rotate-180" : ""}`}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
 
 function SeverityBadge({ severity }) {
   const color = SEVERITY_COLOR[severity] || SEVERITY_COLOR.medium;
@@ -14,6 +35,8 @@ function SeverityBadge({ severity }) {
 }
 
 export default function RootCausePanel({ events }) {
+  const [expanded, setExpanded] = useState(false);
+
   if (!events || events.length === 0) {
     return (
       <div className="bg-surface-raised border border-surface-border rounded-xl p-4">
@@ -25,10 +48,13 @@ export default function RootCausePanel({ events }) {
     );
   }
 
+  const visibleEvents = expanded ? events : events.slice(0, VISIBLE_COUNT);
+  const remainingCount = events.length - VISIBLE_COUNT;
+
   return (
     <div className="bg-surface-raised border border-surface-border rounded-xl p-4 flex flex-col gap-4">
       <h3 className="text-sm font-semibold text-slate-100">Root cause analysis</h3>
-      {events.map((e) => (
+      {visibleEvents.map((e) => (
         <div key={e.event_id} className="border-l-2 pl-3" style={{ borderColor: SEVERITY_COLOR[e.severity] }}>
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <SeverityBadge severity={e.severity} />
@@ -49,6 +75,16 @@ export default function RootCausePanel({ events }) {
           </div>
         </div>
       ))}
+      {remainingCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((prev) => !prev)}
+          className="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors -mt-2"
+        >
+          <ChevronIcon up={expanded} />
+          {expanded ? "Show less" : `Show ${remainingCount} more event${remainingCount === 1 ? "" : "s"}`}
+        </button>
+      )}
     </div>
   );
 }
