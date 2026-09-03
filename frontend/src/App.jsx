@@ -10,6 +10,11 @@ import LiveInjectionPanel from "./components/LiveInjectionPanel";
 
 const INJECT_STAGES = ["Injecting anomaly…", "Detecting…", "Isolating root cause…"];
 
+// Min gap between focus/visibility/online-driven auto-refetches (see the effect
+// in App). Long enough that flipping between tabs doesn't refetch every time,
+// short enough to catch a Render cold-start reseed when the user comes back.
+const REFOCUS_REFETCH_MS = 45_000;
+
 function StepButton({ label, onClick, loading, loadingLabel, done, disabled }) {
   return (
     <button
@@ -44,6 +49,39 @@ export default function App() {
 
   const [agentProgress, setAgentProgress] = useState({ done: 0, total: 0 });
   const agentProgressTimerRef = useRef(null);
+
+  // Every panel that reads run-scoped tables (Decision feed, Escalation queue) is
+  // keyed on decisionsKey and refetches when it changes. bumpDecisionsKey() is the
+  // one way to trigger that; it also stamps the time so the focus/visibility
+  // safeguard below can throttle itself against the last deliberate refresh.
+  const lastBumpRef = useRef(Date.now());
+  const bumpDecisionsKey = useCallback(() => {
+    lastBumpRef.current = Date.now();
+    setDecisionsKey((k) => k + 1);
+  }, []);
+
+  // Render's free tier spins the backend down after inactivity; the next request
+  // cold-starts it and the startup hook reseeds the DB from the CSVs, wiping
+  // decisions/actions/outcomes. That happens with no in-app action, so nothing
+  // would otherwise tell the panels to refetch. When the tab regains focus /
+  // visibility / connectivity (the usual "user came back after a while" signals),
+  // bump the shared key so both panels reload - throttled to once per REFOCUS_
+  // REFETCH_MS so flipping between tabs doesn't refetch on every focus event.
+  useEffect(() => {
+    const maybeRefetch = () => {
+      if (document.visibilityState === "hidden") return;
+      if (Date.now() - lastBumpRef.current < REFOCUS_REFETCH_MS) return;
+      bumpDecisionsKey();
+    };
+    window.addEventListener("focus", maybeRefetch);
+    window.addEventListener("online", maybeRefetch);
+    document.addEventListener("visibilitychange", maybeRefetch);
+    return () => {
+      window.removeEventListener("focus", maybeRefetch);
+      window.removeEventListener("online", maybeRefetch);
+      document.removeEventListener("visibilitychange", maybeRefetch);
+    };
+  }, [bumpDecisionsKey]);
 
   const refreshReadData = useCallback(async () => {
     const [hd, sl, ev] = await Promise.all([
@@ -84,6 +122,12 @@ export default function App() {
     try {
       await api.runDiagnosis(true);
       await refreshReadData();
+      // Diagnose does _init_db(reset=True) on the backend, which wipes the
+      // decisions / actions_taken / outcomes tables. Refresh metrics and remount
+      // the decision feed + escalation queue (both keyed on decisionsKey) so they
+      // reflect the now-empty state instead of showing stale rows from a prior run.
+      await refreshMetrics();
+      bumpDecisionsKey();
       setDiagnoseState("done");
       setBaselineState("idle");
       setAgentState("idle");
@@ -99,7 +143,7 @@ export default function App() {
     try {
       await api.runPolicyBatch("baseline");
       await refreshMetrics();
-      setDecisionsKey((k) => k + 1);
+      bumpDecisionsKey();
       setBaselineState("done");
     } catch (e) {
       setError(String(e.message || e));
@@ -121,7 +165,7 @@ export default function App() {
     try {
       await api.runPolicyBatch("agent");
       await refreshMetrics();
-      setDecisionsKey((k) => k + 1);
+      bumpDecisionsKey();
       setAgentState("done");
     } catch (e) {
       setError(String(e.message || e));
@@ -145,6 +189,12 @@ export default function App() {
     try {
       const result = await api.triggerInjection();
       await refreshReadData();
+      // inject-and-detect also does _init_db(reset=True) on the backend and only
+      // re-runs diagnosis - so decisions / actions_taken / outcomes are now empty.
+      // Refresh metrics and remount the decision feed + escalation queue so they
+      // don't keep showing rows from the pre-injection agent run.
+      await refreshMetrics();
+      bumpDecisionsKey();
       if (result.detected) setMethod(result.detected.payment_method);
       setInjectResult(result);
       setInjectState("done");
@@ -222,6 +272,15 @@ export default function App() {
 
         <RecoveryChart metrics={metrics} />
 
+        {/* Both panels read tables (decisions / actions_taken / outcomes) that every
+            batch run rewrites and every reset path (diagnose, inject-and-detect,
+            backend restart) wipes. Neither component refetches on its own for those
+            events - EscalationQueue only fetches on mount, and DecisionFeed only
+            refetches on its own filter/page state. Keying BOTH wrappers on the same
+            decisionsKey is the single shared trigger: bumping it (runBaseline /
+            runAgent / runDiagnose / runInject) remounts both together so they
+            refetch off one event and can never show mismatched/stale data.
+            If you refactor this JSX, keep both keys and keep them on the same value. */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           <div className="lg:col-span-2" key={`feed-${decisionsKey}`}>
             <DecisionFeed />
