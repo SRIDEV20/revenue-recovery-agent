@@ -9,7 +9,7 @@
 Built for the **Razorpay AI Buildathon 2026 — AI Revenue Recovery track**
 Direction: *Payment degradation → root cause → recovery*
 
-> **Headline result:** on transactions caught inside a live payment outage, the agent recovers **84.49%** of revenue vs. **33.69%** for a naive retry-blind baseline — nearly **2.5x** — because it detects the outage and waits/reroutes instead of retrying straight into it. This holds across **ten independently detected degradation events**, nine of which were injected live and had never been seen by the pipeline before.
+> **Headline result:** on transactions caught inside a live payment outage, the agent recovers **82.29%** of revenue vs. **30.73%** for a naive retry-blind baseline — nearly **2.7x** — because it detects the outage and waits/reroutes instead of retrying straight into it. This holds across **eleven independently detected degradation events**, ten of which were injected live and had never been seen by the pipeline before.
 
 ![Dashboard overview — metrics, payment health chart with degradation windows highlighted, root cause analysis](docs/screenshots/dashboard-overview.png)
 
@@ -41,7 +41,7 @@ The dashboard shows both sides so this is independently checkable:
 - **Detected:** what the pipeline found, on its own, with no access to what was injected
 - **Ground truth (collapsible):** what was actually injected, shown for the most recently triggered event
 
-This was run ten times across the verified session behind these results — the original scripted event plus nine live-triggered ones, each on a different gateway, payment method, and time window:
+This was run eleven times across the verified session behind these results — the original scripted event plus ten live-triggered ones, each on a different gateway, payment method, and time window:
 
 | # | Slice | Window | Ground truth (injected) | Detected (blind) |
 |---|---|---|---|---|
@@ -55,8 +55,9 @@ This was run ten times across the verified session behind these results — the 
 | 8 | netbanking · SecureBank Gateway | Aug 23, 20:00–01:00 | — | 93% → 65% ✓ (critical) |
 | 9 | wallet · NationalPay Gateway | Aug 24, 02:00–08:00 | 97% → 66% | 96% → 73% ✓ |
 | 10 | wallet · SecureBank Gateway | Aug 23, 09:00–14:00 | 97% → 56% | 92% → 62% ✓ (critical) |
+| 11 | wallet · SwiftBank Gateway | Aug 23, 08:00–13:00 | 97% → 56% | 96% → 64% ✓ (critical) |
 
-Each was found independently by the same detection code, on a different gateway/method/window every time — not a lookup tuned to one hardcoded case. The small deltas between injected and detected values (rows 2, 5, 9, and 10) are expected and are themselves evidence the detector is reading real rolling statistics from noisy data, not echoing a stored answer. Ground truth is only retained in the UI for the most recently triggered event; earlier events show "—" in that column even though they were verified independently at the time.
+Each was found independently by the same detection code, on a different gateway/method/window every time — not a lookup tuned to one hardcoded case. The small deltas between injected and detected values (rows 2, 5, 9, 10, and 11) are expected and are themselves evidence the detector is reading real rolling statistics from noisy data, not echoing a stored answer. Ground truth is only retained in the UI for the most recently triggered event; earlier events show "—" in that column even though they were verified independently at the time.
 
 ## Decision schema
 
@@ -151,20 +152,20 @@ Dashboard state is persisted server-side, so refreshing the page reloads the las
 
 ## Results
 
-Numbers below are from the final verified run on the full dataset: 404 transactions, ten degradation events (one scripted, nine live-triggered).
+Numbers below are from the final verified run on the full dataset: 409 transactions, eleven degradation events (one scripted, ten live-triggered).
 
 | Metric | Agent | Baseline |
 |---|---|---|
-| Net revenue recovered | **₹4,90,848** | ₹2,56,943 |
-| Revenue delta | **+₹2,33,905** | — |
-| Recovery rate (overall) | **66.58%** | 36.88% |
-| Recovery rate (degradation-linked only) | **84.49%** | 33.69% |
-| Cost to recover / ₹100 | ₹0.51 | ₹0.30 |
-| Escalations | 17 | 4 |
-| Transactions processed | 404 (269 recovered) | 404 |
-| Degradation-linked transactions | 158 recovered of 187 | 63 recovered of 187 |
+| Net revenue recovered | **₹5,16,370** | ₹2,35,332 |
+| Revenue delta | **+₹2,81,038** | — |
+| Recovery rate (overall) | **66.99%** | 35.70% |
+| Recovery rate (degradation-linked only) | **82.29%** | 30.73% |
+| Cost to recover / ₹100 | ₹0.63 | ₹0.33 |
+| Escalations | 31 | 4 |
+| Transactions processed | 409 (274 recovered) | 409 |
+| Degradation-linked transactions | 158 recovered of 192 | 59 recovered of 192 |
 
-The degradation-linked gap (84.49% vs. 33.69%) is the core proof point: the baseline keeps retrying blindly into each outage window and mostly fails; the agent detects the outage and waits it out or reroutes, recovering nearly 2.5x more of that same at-risk revenue. Cost-to-recover is higher for the agent because it spends on discounts and reroutes where the baseline spends nothing and simply gives up — but it converts that spend into far more of the outage-window revenue, a clear net win.
+The degradation-linked gap (82.29% vs. 30.73%) is the core proof point: the baseline keeps retrying blindly into each outage window and mostly fails; the agent detects the outage and waits it out or reroutes, recovering nearly 2.7x more of that same at-risk revenue. Cost-to-recover is higher for the agent because it spends on discounts and reroutes where the baseline spends nothing and simply gives up — but it converts that spend into far more of the outage-window revenue, a clear net win.
 
 ## Limitations & honest scope
 
