@@ -9,7 +9,7 @@
 Built for the **Razorpay AI Buildathon 2026 — AI Revenue Recovery track**
 Direction: *Payment degradation → root cause → recovery*
 
-> **Headline result:** on transactions caught inside a live payment outage, the agent recovers **80.81%** of revenue vs. **29.65%** for a naive retry-blind baseline — nearly **2.7x** — because it detects the outage and waits/reroutes instead of retrying straight into it. This holds across **five independently detected degradation events**, four of which were injected live and had never been seen by the pipeline before.
+> **Headline result:** on transactions caught inside a live payment outage, the agent recovers **79.67%** of revenue vs. **33.74%** for a naive retry-blind baseline — nearly **2.4x** — because it detects the outage and waits/reroutes instead of retrying straight into it. This holds across **nine independently detected degradation events**, eight of which were injected live and had never been seen by the pipeline before.
 
 ![Dashboard overview — metrics, payment health chart with degradation windows highlighted, root cause analysis](docs/screenshots/dashboard-overview.png)
 
@@ -39,9 +39,9 @@ The dataset ships with one scripted degradation event (a UPI/PayFast Gateway out
 
 The dashboard shows both sides so this is independently checkable:
 - **Detected:** what the pipeline found, on its own, with no access to what was injected
-- **Ground truth (collapsible):** what was actually injected
+- **Ground truth (collapsible):** what was actually injected, shown for the most recently triggered event
 
-This was run five times across the verified session behind these results — the original scripted event plus four live-triggered ones, each on a different gateway, payment method, and time window:
+This was run nine times across the verified session behind these results — the original scripted event plus eight live-triggered ones, each on a different gateway, payment method, and time window:
 
 | # | Slice | Window | Ground truth (injected) | Detected (blind) |
 |---|---|---|---|---|
@@ -50,8 +50,12 @@ This was run five times across the verified session behind these results — the
 | 3 | wallet · PayFast Gateway | Aug 22, 09:00–15:00 | — | 96% → 73% ✓ |
 | 4 | wallet · SecureBank Gateway | Aug 22, 17:00–22:00 | — | 96% → 71% ✓ (critical) |
 | 5 | netbanking · NationalPay Gateway | Aug 23, 00:00–05:00 | 94% → 75% | 93% → 79% ✓ |
+| 6 | UPI · TrustBank Gateway | Aug 23, 08:00–12:00 | — | 95% → 79% ✓ |
+| 7 | UPI · NationalPay Gateway | Aug 23, 14:00–19:00 | — | 95% → 71% ✓ |
+| 8 | netbanking · SecureBank Gateway | Aug 23, 20:00–01:00 | — | 93% → 65% ✓ (critical) |
+| 9 | wallet · NationalPay Gateway | Aug 24, 02:00–08:00 | 97% → 66% | 96% → 73% ✓ |
 
-Each was found independently by the same detection code, on a different gateway/method/window every time — not a lookup tuned to one hardcoded case. The small deltas between injected and detected values (e.g. rows 2 and 5) are expected and are themselves evidence the detector is reading real rolling statistics from noisy data, not echoing a stored answer.
+Each was found independently by the same detection code, on a different gateway/method/window every time — not a lookup tuned to one hardcoded case. The small deltas between injected and detected values (rows 2, 5, and 9) are expected and are themselves evidence the detector is reading real rolling statistics from noisy data, not echoing a stored answer. Ground truth is only retained in the UI for the most recently triggered event; earlier events show "—" in that column even though they were verified independently at the time.
 
 ## Decision schema
 
@@ -81,7 +85,7 @@ Explicit, enforced (not just documented) guardrails, because an agent that retri
 - **Idempotency guard** — the executor checks the audit log for an existing outcome on a given `(transaction_id, policy)` pair before acting, so re-running a batch can't double-count recovered revenue
 - **Batch-level fault isolation** — if any single transaction hits an unexpected error (malformed AI output, an unrecognized ID, an API failure), it's logged and skipped rather than crashing the rest of the batch
 
-These were explicitly tested against deliberately invalid AI output (a 40% discount request, a 4th retry attempt, a repeated bank-decline retry) and confirmed to clip, convert, or block the action rather than execute it as-is.
+These were explicitly tested against deliberately invalid AI output (a 40% discount request, a 4th retry attempt, a repeated bank-decline retry) and confirmed to clip, convert, or block the action rather than execute it as-is. This is also covered by an automated pytest suite that runs in CI on every push (see the badge at the top of this README).
 
 Every decision, rule check, action, and outcome is written to an append-only audit log, queryable via the API and exportable as JSON (`/api/audit-log/export`).
 
@@ -146,32 +150,33 @@ Dashboard state is persisted server-side, so refreshing the page reloads the las
 
 ## Results
 
-Numbers below are from the final verified run on the full dataset: 380 transactions, five degradation events (one scripted, four live-triggered).
+Numbers below are from the final verified run on the full dataset: 483 transactions, nine degradation events (one scripted, eight live-triggered).
 
 | Metric | Agent | Baseline |
 |---|---|---|
-| Net revenue recovered | **₹4,43,215** | ₹2,72,233 |
-| Revenue delta | **+₹1,70,982** | — |
-| Recovery rate (overall) | **63.95%** | 35% |
-| Recovery rate (degradation-linked only) | **80.81%** | 29.65% |
-| Cost to recover / ₹100 | ₹0.71 | ₹0.27 |
-| Escalations | 19 | 4 |
-| Transactions processed | 380 (243 recovered) | 380 |
-| Degradation-linked transactions | 135 recovered of 172 | 51 recovered of 172 |
+| Net revenue recovered | **₹6,40,319** | ₹3,84,203 |
+| Revenue delta | **+₹2,56,116** | — |
+| Recovery rate (overall) | **70.39%** | 40.58% |
+| Recovery rate (degradation-linked only) | **79.67%** | 33.74% |
+| Cost to recover / ₹100 | ₹0.65 | ₹0.24 |
+| Escalations | 41 | 4 |
+| Transactions processed | 483 (340 recovered) | 483 |
+| Degradation-linked transactions | 196 recovered of 246 | 83 recovered of 246 |
 
-The degradation-linked gap (80.81% vs. 29.65%) is the core proof point: the baseline keeps retrying blindly into each outage window and mostly fails; the agent detects the outage and waits it out or reroutes, recovering nearly 2.7x more of that same at-risk revenue. Cost-to-recover is higher for the agent because it spends on discounts and reroutes where the baseline spends nothing and simply gives up — but it converts that spend into far more of the outage-window revenue, a clear net win.
+The degradation-linked gap (79.67% vs. 33.74%) is the core proof point: the baseline keeps retrying blindly into each outage window and mostly fails; the agent detects the outage and waits it out or reroutes, recovering nearly 2.4x more of that same at-risk revenue. Cost-to-recover is higher for the agent because it spends on discounts and reroutes where the baseline spends nothing and simply gives up — but it converts that spend into far more of the outage-window revenue, a clear net win.
 
 ## Limitations & honest scope
 
 - All data is synthetic; recovery outcomes are simulated against a `ground_truth_recovery_probability` assigned at dataset generation, not real payment gateway responses.
 - Anomaly detection uses a rolling-baseline/z-score approach tuned for this dataset's noise level; a production system would need this validated against real traffic patterns.
 - Actions (retry, discount, reminder, reroute) are mocked and logged, not wired to a real gateway, SMS/email provider, or payment processor.
-- Outcome simulation currently draws from `ground_truth_recovery_probability` without a fixed random seed, so exact figures can drift slightly (typically within a percentage point or two) between repeated runs on the same data — the direction and size of the agent-vs-baseline gap has stayed consistent across every run in testing.
+- Outcome simulation currently draws from `ground_truth_recovery_probability` without a fixed random seed, so exact figures can drift between repeated runs on the same data — the direction and size of the agent-vs-baseline gap has stayed consistent (a wide, decisive margin in favor of the agent) across every run in testing.
 - Duplicate transaction attempts are guarded against for the demo dataset via an audit-log check, not a production-grade idempotency system.
 
 ## What's next
 
 - Now live-deployed on Render (backend) + Vercel (frontend) — see `backend/render.yaml` and `frontend/vercel.json` for the configs, useful for anyone redeploying their own copy.
+- Fix the outcome simulation's random seed so repeated runs on identical data produce identical numbers, for fully reproducible demos.
 - Real gateway/webhook integration to replace the synthetic transaction feed.
 - A/B testing the agent against baseline on a live traffic split rather than a static synthetic batch.
 
